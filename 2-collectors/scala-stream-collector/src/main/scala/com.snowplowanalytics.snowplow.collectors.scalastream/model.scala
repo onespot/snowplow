@@ -54,7 +54,8 @@ package model {
   final case class CookieBounceConfig(
     enabled: Boolean,
     name: String,
-    fallbackNetworkUserId: String
+    fallbackNetworkUserId: String,
+    forwardedProtocolHeader: Option[String]
   )
   final case class RedirectMacroConfig(
     enabled: Boolean,
