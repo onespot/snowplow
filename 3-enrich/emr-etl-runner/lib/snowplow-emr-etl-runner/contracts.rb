@@ -66,6 +66,10 @@ module Snowplow
         :bad => String,
         :errors => Maybe[String],
         :archive => Maybe[String]
+        }),
+      :parquet => ({
+        :good => String,
+        :bad => String
         })
       })
 
@@ -145,7 +149,10 @@ module Snowplow
           :rdb_shredder => String,
           :hadoop_elasticsearch => String,
           :rdb_loader => String
-          })
+          }),
+        :jars => ({
+            :shredded_to_parquet => String
+         })
         }),
       :monitoring => ({
         :tags => HashOf[Symbol, String],

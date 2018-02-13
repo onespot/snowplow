@@ -41,6 +41,7 @@ module Snowplow
       ENRICH_STEP_INPUT = 'hdfs:///local/snowplow/raw-events/'
       ENRICH_STEP_OUTPUT = 'hdfs:///local/snowplow/enriched-events/'
       SHRED_STEP_OUTPUT = 'hdfs:///local/snowplow/shredded-events/'
+      PARQUET_STEP_OUTPUT = 'hdfs:///local/snowplow/shredded-events-parquet/'
 
       # Need to understand the status of all our jobflow steps
       @@running_states = Set.new(%w(WAITING RUNNING PENDING SHUTTING_DOWN))
@@ -125,6 +126,7 @@ module Snowplow
         csbr = config[:aws][:s3][:buckets][:raw]
         csbe = config[:aws][:s3][:buckets][:enriched]
         csbs = config[:aws][:s3][:buckets][:shredded]
+        csbp = config[:aws][:s3][:buckets][:parquet]
 
         # staging
         if staging
@@ -433,6 +435,35 @@ module Snowplow
             raise DirectoryNotEmptyError, "Cannot safely add shredding step to jobflow, #{csbs_good_loc} is not empty"
           end
           @jobflow.add_step(shred_step)
+
+          if is_rdb_shredder(config[:storage][:versions][:rdb_shredder])
+            parquet_step =
+                duplicate_storage_config = build_duplicate_storage_json(targets[:DUPLICATE_TRACKING], false)
+            @jobflow.add_step(
+                build_spark_step(
+                    "Shredded To Parquet",
+                    "#{config[:storage][:jars][:shredded_to_parquet]}",
+                    "storage.spark.EventsToParquetJob",
+                    {:in => glob_path(SHRED_STEP_OUTPUT),
+                     :good => PARQUET_STEP_OUTPUT,
+                     :bad => partition_by_run(csbp[:bad], run_id)
+                    },
+                    {
+                        'iglu-config' => build_iglu_config_json(resolver)
+                    }.merge(duplicate_storage_config)
+                )
+            )
+            # We need to copy our shredded types from HDFS back to S3
+            copy_parquet_to_s3_step = Elasticity::S3DistCpStep.new(legacy = @legacy)
+            copy_parquet_to_s3_step.arguments = [
+                "--src", PARQUET_STEP_OUTPUT,
+                "--dest", csbp[:good],
+                "--srcPattern", PARTFILE_REGEXP,
+                "--s3Endpoint", s3_endpoint
+            ] + output_codec
+            copy_parquet_to_s3_step.name << ": Shredded Parquet HDFS -> S3"
+            @jobflow.add_step(copy_parquet_to_s3_step)
+          end
 
           # We need to copy our shredded types from HDFS back to S3
           copy_to_s3_step = Elasticity::S3DistCpStep.new(legacy = @legacy)
