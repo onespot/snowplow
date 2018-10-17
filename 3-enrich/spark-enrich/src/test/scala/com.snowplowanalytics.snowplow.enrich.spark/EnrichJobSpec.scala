@@ -711,6 +711,8 @@ trait EnrichJobSpec extends SparkSpec {
       igluConfig,
       "--etl-timestamp",
       1000000000000L.toString,
+      "--redaction-collector",
+      "http://localhost",
       "--local"
     )
 

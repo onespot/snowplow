@@ -26,19 +26,18 @@ import org.apache.commons.codec.binary.Base64
 import scalaz._
 
 // Spark
-import org.apache.spark.{SparkConf, SparkContext, SparkFiles}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.serializer.KryoSerializer
-import org.apache.spark.sql.{Encoders, Row, SaveMode, SparkSession}
 import org.apache.spark.sql.functions.col
 import org.apache.spark.sql.types.{StringType, StructField, StructType}
+import org.apache.spark.sql.{Encoders, Row, SaveMode, SparkSession}
+import org.apache.spark.{SparkConf, SparkContext, SparkFiles}
 
 // Elephant Bird
 import com.twitter.elephantbird.mapreduce.input.MultiInputFormat
 import com.twitter.elephantbird.mapreduce.io.BinaryWritable
 
 // Hadoop
-import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.io.LongWritable
 
 // Hadop LZO
@@ -117,12 +116,14 @@ object EnrichJob extends SparkJob {
    */
   def enrich(line: Any, config: ParsedEnrichJobConfig): (Any, List[ValidatedEnrichedEvent]) = {
     import singleton._
+    // Need to pass through etlVersion config.etlTstamp and new snowplow collector url
     val adapterRegistry = new AdapterRegistry
     val enrichmentRegistry = RegistrySingleton.get(config.igluConfig, config.enrichments, config.local)
+    var enricher = EnricherSingleton.get(enrichmentRegistry, config.snowplowCollector)
     val loader   = LoaderSingleton.get(config.inFormat).asInstanceOf[Loader[Any]]
     val event = EtlPipeline.processEvents(
       adapterRegistry,
-      enrichmentRegistry,
+      enricher,
       etlVersion,
       config.etlTstamp,
       loader.toCollectorPayload(line))(ResolverSingleton.get(config.igluConfig))

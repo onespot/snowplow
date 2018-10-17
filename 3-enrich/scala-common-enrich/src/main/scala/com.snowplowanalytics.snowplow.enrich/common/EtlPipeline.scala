@@ -18,18 +18,21 @@ package common
 // Java
 import java.io.{PrintWriter, StringWriter}
 
+import com.snowplowanalytics.snowplow.enrich.common.adapters.AdapterRegistry
+import com.snowplowanalytics.snowplow.enrich.common.enrichments.{DefaultEventEnricher, EventEnricher}
+
 // Joda
 import org.joda.time.DateTime
 
 // Iglu
-import iglu.client.Resolver
+import com.snowplowanalytics.iglu.client.Resolver
 
 // Scala
 import scala.util.control.NonFatal
 
 // Scalaz
+import scalaz.Scalaz._
 import scalaz._
-import Scalaz._
 
 // This project
 import adapters.AdapterRegistry
@@ -64,9 +67,17 @@ object EtlPipeline {
    *         flatMap, will include any validation errors
    *         contained within the ValidatedMaybeCanonicalInput
    */
+  def processEvents(adapterRegistry: AdapterRegistry,
+                    enrichmentRegistry: EnrichmentRegistry,
+                    etlVersion: String,
+                    etlTstamp: DateTime,
+                    input: ValidatedMaybeCollectorPayload)(implicit resolver: Resolver): List[ValidatedEnrichedEvent] =
+    processEvents(adapterRegistry, new DefaultEventEnricher(enrichmentRegistry), etlVersion, etlTstamp, input)
+
+  // This is now prefered method, as it allows injection of additional processing around the enrichment
   def processEvents(
     adapterRegistry: AdapterRegistry,
-    enrichmentRegistry: EnrichmentRegistry,
+    enricher: EventEnricher,
     etlVersion: String,
     etlTstamp: DateTime,
     input: ValidatedMaybeCollectorPayload)(implicit resolver: Resolver): List[ValidatedEnrichedEvent] = {
@@ -91,7 +102,7 @@ object EtlPipeline {
             } yield
               for {
                 event <- events
-                enriched = EnrichmentManager.enrichEvent(enrichmentRegistry, etlVersion, etlTstamp, event)
+                enriched = enricher.enrichEvent(event, etlVersion, etlTstamp)
               } yield enriched
 
       flattenToList[EnrichedEvent](e)
