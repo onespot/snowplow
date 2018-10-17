@@ -18,18 +18,23 @@ package spark
 
 // Jackson
 import com.fasterxml.jackson.databind.JsonNode
+import com.snowplowanalytics.snowplow.enrich.common.enrichments._
 
 // Json4s
 import org.json4s.jackson.JsonMethods.fromJsonNode
 
 // Snowplow
-import common.{FatalEtlError, ValidatedMessage, ValidatedNelMessage}
-import common.enrichments.EnrichmentRegistry
-import common.utils.{ConversionUtils, JsonUtils}
+import com.snowplowanalytics.snowplow.enrich.common.enrichments.EnrichmentRegistry
+import com.snowplowanalytics.snowplow.enrich.common.utils.{ConversionUtils, JsonUtils}
+import com.snowplowanalytics.snowplow.enrich.common.{
+  FatalEtlError,
+  ValidatedMessage,
+  ValidatedNelMessage
+}
 
 // Iglu
-import iglu.client.Resolver
-import iglu.client.validation.ProcessingMessageMethods._
+import com.snowplowanalytics.iglu.client.Resolver
+import com.snowplowanalytics.iglu.client.validation.ProcessingMessageMethods._
 
 /** Singletons needed for unserializable classes. */
 object singleton {
@@ -105,6 +110,29 @@ object singleton {
           JsonNode]
         reg <- EnrichmentRegistry.parse(fromJsonNode(node), local)
       } yield reg
+  }
+
+  object EnricherSingleton {
+    @volatile private var instance: RedactingEventEnricher = _
+    @volatile private var snowplowCollector: String        = _
+    @volatile private var registry: EnrichmentRegistry     = _
+
+    def get(registry: EnrichmentRegistry, snowplowCollector: String): EventEnricher = {
+      // Mildly awkward here, but since we're wrapping the registry singleton,
+      // we need to detect it changing so as to update our wrapper.
+      if (instance == null || (this.registry ne registry) || this.snowplowCollector != snowplowCollector) {
+        synchronized {
+          if (instance == null || (this.registry ne registry) || this.snowplowCollector != snowplowCollector) {
+            val reporter = new SnowplowEventReporter(snowplowCollector)
+            val redactor = new RawEventCleanser(PIIRedactor())
+            instance =
+              new RedactingEventEnricher(redactor, new DefaultEventEnricher(registry), reporter)
+            this.snowplowCollector = snowplowCollector
+          }
+        }
+      }
+      instance
+    }
   }
 
   /** Singleton for Loader. */

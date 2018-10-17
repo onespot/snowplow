@@ -23,17 +23,16 @@ import java.net.URI
 import org.joda.time.DateTime
 
 // Scalaz
+import scalaz.Scalaz._
 import scalaz._
-import Scalaz._
 
 // Scopt
-import scopt._
 
 // Snowplow
-import common.ValidatedNelMessage
-import common.enrichments.EnrichmentRegistry
-import common.loaders.Loader
-import iglu.client.validation.ProcessingMessageMethods._
+import com.snowplowanalytics.iglu.client.validation.ProcessingMessageMethods._
+import com.snowplowanalytics.snowplow.enrich.common.ValidatedNelMessage
+import com.snowplowanalytics.snowplow.enrich.common.enrichments.EnrichmentRegistry
+import com.snowplowanalytics.snowplow.enrich.common.loaders.Loader
 
 sealed trait EnrichJobConfig {
   def inFolder: String
@@ -42,6 +41,7 @@ sealed trait EnrichJobConfig {
   def badFolder: String
   def enrichments: String
   def igluConfig: String
+  def snowplowCollector: String
   def local: Boolean
 }
 
@@ -52,6 +52,7 @@ private case class RawEnrichJobConfig(
   override val badFolder: String = "",
   override val enrichments: String = "",
   override val igluConfig: String = "",
+  override val snowplowCollector: String = "",
   override val local: Boolean = false,
   etlTstamp: Long = 0L
 ) extends EnrichJobConfig
@@ -64,6 +65,7 @@ private case class RawEnrichJobConfig(
  * @param badFolder Output folder where the malformed events will be stored
  * @param enrichments JSON representing the enrichments that need performing
  * @param igluConfig JSON representing the Iglu configuration
+ * @param snowplowCollector hostname of collector to which to send redaction events
  * @param local Whether to build a registry from local data
  * @param etlTstamp Timestamp at which the job was launched
  */
@@ -74,6 +76,7 @@ case class ParsedEnrichJobConfig(
   override val badFolder: String,
   override val enrichments: String,
   override val igluConfig: String,
+  override val snowplowCollector: String,
   override val local: Boolean,
   etlTstamp: DateTime,
   filesToCache: List[(URI, String)]
@@ -116,7 +119,11 @@ object EnrichJobConfig {
       .required()
       .valueName("<ETL timestamp>")
       .action((t, c) => c.copy(etlTstamp = t))
-      .text("Timestamp at which the job was launched, in milliseconds")
+    opt[String]("redaction-collector")
+      .required()
+      .valueName("<hostname>")
+      .action((h, c) => c.copy(snowplowCollector = h))
+      .text("Host name of the Snowplow collector to which to report redaction events")
     opt[Unit]("local")
       .hidden()
       .action((_, c) => c.copy(local = true))
@@ -144,6 +151,7 @@ object EnrichJobConfig {
         c.badFolder,
         c.enrichments,
         c.igluConfig,
+        c.snowplowCollector,
         c.local,
         new DateTime(c.etlTstamp),
         filesToCache(reg))

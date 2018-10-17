@@ -33,7 +33,7 @@ object Dependencies {
 
   object V {
     // Java
-    val http             = "4.3.3"
+    val http             = "4.5.4"
     val commonsLang      = "3.4"
     val commonsIo        = "2.4"
     val commonsCodec     = "1.11"

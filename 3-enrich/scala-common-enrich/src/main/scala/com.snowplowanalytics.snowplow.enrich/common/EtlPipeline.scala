@@ -18,23 +18,25 @@ package common
 // Java
 import java.io.{PrintWriter, StringWriter}
 
+import com.snowplowanalytics.snowplow.enrich.common.adapters.AdapterRegistry
+import com.snowplowanalytics.snowplow.enrich.common.enrichments.{DefaultEventEnricher, EventEnricher}
+
 // Joda
 import org.joda.time.DateTime
 
 // Iglu
-import iglu.client.Resolver
+import com.snowplowanalytics.iglu.client.Resolver
 
 // Scala
 import scala.util.control.NonFatal
 
 // Scalaz
+import scalaz.Scalaz._
 import scalaz._
-import Scalaz._
 
 // This project
-import adapters.{AdapterRegistry, RawEvent}
-import enrichments.{EnrichmentManager, EnrichmentRegistry}
-import outputs.EnrichedEvent
+import com.snowplowanalytics.snowplow.enrich.common.enrichments.EnrichmentRegistry
+import com.snowplowanalytics.snowplow.enrich.common.outputs.EnrichedEvent
 
 /**
  * Expresses the end-to-end event pipeline
@@ -63,8 +65,15 @@ object EtlPipeline {
    *         flatMap, will include any validation errors
    *         contained within the ValidatedMaybeCanonicalInput
    */
+  def processEvents(registry: EnrichmentRegistry,
+                    etlVersion: String,
+                    etlTstamp: DateTime,
+                    input: ValidatedMaybeCollectorPayload)(implicit resolver: Resolver): List[ValidatedEnrichedEvent] =
+    processEvents(new DefaultEventEnricher(registry), etlVersion, etlTstamp, input)
+
+  // This is now prefered method, as it allows injection of additional processing around the enrichment
   def processEvents(
-    registry: EnrichmentRegistry,
+    enricher: EventEnricher,
     etlVersion: String,
     etlTstamp: DateTime,
     input: ValidatedMaybeCollectorPayload)(implicit resolver: Resolver): List[ValidatedEnrichedEvent] = {
@@ -89,7 +98,7 @@ object EtlPipeline {
             } yield
               for {
                 event <- events
-                enriched = EnrichmentManager.enrichEvent(registry, etlVersion, etlTstamp, event)
+                enriched = enricher.enrichEvent(event, etlVersion, etlTstamp)
               } yield enriched
 
       flattenToList[EnrichedEvent](e)
