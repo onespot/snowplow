@@ -46,7 +46,10 @@ class SnowplowEventFormatterSpec extends Specification with DataTables with Vali
     "{\"schema\":\"iglu:com.onespot/user-id/jsonschema/1-0-0\",\"data\":{\"source\":\"email\",\"user_id\":\"3458\"}}"
 
   def clientContext =
-    "{\"schema\":\"iglu:com.onespot/client/jsonschema/1-0-0\",\"data\":{\"company_id\":1,\"site_id\":2}}"
+    "{\"schema\":\"iglu:com.onespot/client/jsonschema/1-0-0\",\"data\":{\"company_id\":57,\"site_id\":72}}"
+
+  def futureClientContext =
+    "{\"schema\":\"iglu:com.onespot/client/jsonschema/9-8-7\",\"data\":{\"company_id\":57,\"site_id\":72,\"elephants\":false}}"
 
   // Should find client context if present
   def e2 =
@@ -59,8 +62,12 @@ class SnowplowEventFormatterSpec extends Specification with DataTables with Vali
       "Wrong data type" !! "{ \"schema\": \"iglu:com.snowplowanalytics.snowplow/contexts/jsonschema/1-0-1\", \"data\": 1 }" ! contexts(
         parentEventContext)   |
       "No client context"     !! contexts(userContext) ! contexts(parentEventContext) |
-      "Client context copied" !! contexts(s"${userContext},${clientContext}") ! contexts(
-        s"${parentEventContext},${clientContext}") |> { (_, input, output) =>
+      "Client context copied" !! contexts(s"$clientContext,$userContext") ! contexts(
+        s"$parentEventContext,$clientContext") |
+      "Client context version ignored" !! contexts(s"$futureClientContext,$userContext") ! contexts(
+        s"$parentEventContext,$futureClientContext") |
+      "Old contexts schema supported" !! contexts(s"$userContext,$clientContext", 0) ! contexts(
+        s"$parentEventContext,$clientContext") |> { (_, input, output) =>
       {
         val event    = makeEvent(testId, input)
         val contexts = SnowplowEventFormatter.generateContexts(event)
@@ -75,6 +82,6 @@ class SnowplowEventFormatterSpec extends Specification with DataTables with Vali
     event
   }
 
-  def contexts(contexts: String): String =
-    s"""{"schema":"iglu:com.snowplowanalytics.snowplow/contexts/jsonschema/1-0-1","data":[${contexts}]}"""
+  def contexts(contexts: String, contextSchemaVersion: Int = 1): String =
+    s"""{"schema":"iglu:com.snowplowanalytics.snowplow/contexts/jsonschema/1-0-$contextSchemaVersion","data":[$contexts]}"""
 }

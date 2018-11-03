@@ -1,5 +1,7 @@
 package com.snowplowanalytics.snowplow.enrich.common.enrichments
 
+import java.util.regex.Pattern
+
 import com.snowplowanalytics.snowplow.enrich.common.outputs.EnrichedEvent
 import org.json4s.JValue
 import org.json4s.JsonAST._
@@ -8,10 +10,10 @@ import org.json4s.jackson.JsonMethods._
 
 import scala.util.Try
 
-private case class Schema(val name: String) {
+private case class Schema(val pattern: Pattern) {
   def hasSchema(obj: JValue): Boolean =
     obj \ "schema" match {
-      case JString(value) => name == value
+      case JString(value) => pattern.matcher(value).matches()
       case _              => false
     }
 }
@@ -22,8 +24,11 @@ private case class Schema(val name: String) {
  */
 object SnowplowEventFormatter {
 
-  private val clientSchema   = Schema("iglu:com.onespot/client/jsonschema/1-0-0")
-  private val contextsSchema = Schema("iglu:com.snowplowanalytics.snowplow/contexts/jsonschema/1-0-1")
+  // We don't care what version of the client schema as we're copying it blindly.
+  private val clientSchema = Schema(Pattern.compile("iglu:com.onespot/client/jsonschema/[0-9]+-[0-9]+-[0-9]+"))
+  // We see different versions in the data.  Also future proofs as we'll handle any backwards compatible schema
+  private val contextsSchema = Schema(
+    Pattern.compile("iglu:com.snowplowanalytics.snowplow/contexts/jsonschema/1-0-[0-9]+"))
 
   /**
    * Builds the relevant contexts for a redaction event.
@@ -33,7 +38,7 @@ object SnowplowEventFormatter {
   def generateContexts(event: EnrichedEvent): String = {
     val contexts = List(Some(parent(event.event_id)), clientContext(event)).flatten
     val contextJson =
-      ("schema" -> contextsSchema.name) ~
+      ("schema" -> "iglu:com.snowplowanalytics.snowplow/contexts/jsonschema/1-0-1") ~
         ("data" -> JArray(contexts))
     compact(render(contextJson))
   }
